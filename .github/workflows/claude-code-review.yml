@@ -103,8 +103,9 @@ jobs:
             Output BLOCK if there are any 🔴 Critical issues. Output APPROVE otherwise.
 
           claude_args: |
-            --max-turns 5
+            --max-turns 10
             --model claude-sonnet-4-5-20250929
+          allowed_tools: "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(gh pr view:*),Bash(gh pr list:*)"
 
       - name: Check review verdict
         if: always() && steps.review.outcome == 'success'
