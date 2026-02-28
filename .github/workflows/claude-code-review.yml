@@ -2,90 +2,43 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
-
-# Cancel previous runs for same PR
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+    types: [opened, synchronize, ready_for_review, reopened]
+    # Optional: Only run on specific file changes
+    # paths:
+    #   - "src/**/*.ts"
+    #   - "src/**/*.tsx"
+    #   - "src/**/*.js"
+    #   - "src/**/*.jsx"
 
 jobs:
-  review:
+  claude-review:
+    # Optional: Filter by PR author
+    # if: |
+    #   github.event.pull_request.user.login == 'external-contributor' ||
+    #   github.event.pull_request.user.login == 'new-developer' ||
+    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+
     runs-on: ubuntu-latest
-    if: |
-      !contains(github.event.pull_request.title, '[skip-review]') &&
-      !contains(github.event.pull_request.labels.*.name, 'skip-review')
     permissions:
       contents: read
-      pull-requests: write
-      issues: write
+      pull-requests: read
+      issues: read
       id-token: write
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Claude Code Review
-        id: review
+      - name: Run Claude Code Review
+        id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          use_sticky_comment: true
-          include_fix_links: true
-          show_full_output: true
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options
 
-          prompt: |
-            Review the PR diff thoroughly. Follow ALL rules from CLAUDE.md.
-
-            Focus ONLY on the changed files in this PR diff. Do NOT try to list PRs or run git commands.
-            Use Read, Glob, and Grep tools to inspect source files if needed.
-
-            ## Review Checklist
-
-            ### Security
-            - Check for exposed secrets, API keys, tokens, passwords in code
-            - Verify all user input is validated
-            - Check for XSS vectors
-
-            ### TypeScript
-            - Flag any use of `any` type
-            - Check for missing return types on functions
-
-            ### Quality
-            - No console.log left in code
-            - No commented-out code
-            - No TODO without linked issue number
-            - No hardcoded magic numbers, URLs, or credentials
-
-            ## Output Format
-            For each issue found, provide:
-            1. Severity: CRITICAL | WARNING | SUGGESTION
-            2. File and line
-            3. What's wrong
-            4. How to fix
-
-            End with a summary line, exactly one of:
-            REVIEW_VERDICT: APPROVE
-            REVIEW_VERDICT: BLOCK
-
-            Output BLOCK if there are any CRITICAL issues. Output APPROVE otherwise.
-
-          claude_args: |
-            --max-turns 10
-            --model claude-sonnet-4-5-20250929
-            --allowedTools Read Glob Grep
-
-      - name: Check review verdict
-        if: always() && steps.review.outcome == 'success'
-        run: |
-          COMMENT=$(gh pr view ${{ github.event.pull_request.number }} --json comments --jq '.comments[-1].body')
-          if echo "$COMMENT" | grep -q "REVIEW_VERDICT: BLOCK"; then
-            echo "🔴 Claude found critical issues — blocking merge"
-            exit 1
-          fi
-          echo "✅ No critical issues found"
-        env:
-          GH_TOKEN: ${{ github.token }}
