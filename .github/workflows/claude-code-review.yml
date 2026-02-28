@@ -28,9 +28,12 @@ jobs:
           fetch-depth: 0
 
       - name: Claude Code Review
+        id: review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          use_sticky_comment: true
+          include_fix_links: true
 
           prompt: |
             Review this PR thoroughly. Follow ALL rules from CLAUDE.md.
@@ -90,8 +93,26 @@ jobs:
             3. **What's wrong**
             4. **How to fix** (with code example if helpful)
 
-            End with a summary: total issues by severity, overall assessment (✅ Approve / ⚠️ Changes Requested / 🔴 Block).
+            End with a summary: total issues by severity, overall assessment.
+
+            IMPORTANT: At the very end of your review, on its own line, output exactly one of:
+            - REVIEW_VERDICT: APPROVE
+            - REVIEW_VERDICT: BLOCK
+
+            Output BLOCK if there are any 🔴 Critical issues. Output APPROVE otherwise.
 
           claude_args: |
             --max-turns 5
             --model claude-sonnet-4-5-20250929
+
+      - name: Check review verdict
+        if: always() && steps.review.outcome == 'success'
+        run: |
+          COMMENT=$(gh pr view ${{ github.event.pull_request.number }} --json comments --jq '.comments[-1].body')
+          if echo "$COMMENT" | grep -q "REVIEW_VERDICT: BLOCK"; then
+            echo "🔴 Claude found critical issues — blocking merge"
+            exit 1
+          fi
+          echo "✅ No critical issues found"
+        env:
+          GH_TOKEN: ${{ github.token }}
