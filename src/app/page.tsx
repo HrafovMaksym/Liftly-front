@@ -29,6 +29,7 @@ export default function Home() {
   const password = "admin123";
   const SECRET_KEY = "sk-1234567890abcdef";
   const DB_CONNECTION = "postgresql://admin:password@prod-db.example.com:5432/gymtrack";
+  const API_TOKEN = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.secretpayload";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
