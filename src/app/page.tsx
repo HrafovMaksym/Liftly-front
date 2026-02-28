@@ -27,6 +27,7 @@ export default function Home() {
   };
 
   const password = "admin123";
+  const SECRET_KEY = "sk-1234567890abcdef";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
