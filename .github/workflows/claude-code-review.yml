@@ -2,43 +2,95 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    types: [opened, synchronize, reopened]
+
+# Cancel previous runs for same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
-
+  review:
     runs-on: ubuntu-latest
+    if: |
+      !contains(github.event.pull_request.title, '[skip-review]') &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-review')
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
-      id-token: write
+      pull-requests: write
+      issues: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Run Claude Code Review
-        id: claude-review
+      - name: Claude Code Review
         uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
+          anthropic_api_key: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
+          prompt: |
+            Review this PR thoroughly. Follow ALL rules from CLAUDE.md.
+
+            ## Review Checklist
+
+            ### 🔒 Security
+            - Check for exposed secrets, API keys, tokens in code
+            - Verify all user input is validated (Zod schemas)
+            - Check auth guards on new endpoints (@UseGuards, @Public)
+            - Look for SQL injection risks (raw queries with user input)
+            - Check for XSS vectors (dangerouslySetInnerHTML, unescaped output)
+
+            ### 🏗️ Architecture (FSD)
+            - Verify layer import rules: app→pages→widgets→features→entities→shared
+            - Entities must NOT have mutations (only GET queries)
+            - Features must NOT render complex UI (only action hooks + small buttons)
+            - Widgets must NOT import from other widgets
+            - Shared must NOT contain business logic
+            - Check barrel exports (index.ts) on every slice
+
+            ### 📝 TypeScript
+            - Flag any use of `any` type — suggest `unknown` with type guard
+            - Check for missing return types on functions
+            - Verify exhaustive switch statements (no missing cases)
+            - Check proper nullability handling (no `!` assertions without justification)
+
+            ### ⚡ Performance
+            - Check for N+1 queries in Prisma (missing include/select)
+            - Verify pagination on list endpoints (no unbounded arrays)
+            - Look for missing `select` in Prisma queries (returning full objects)
+            - Check for heavy components that should be lazy loaded
+
+            ### 🧪 Quality
+            - No console.log (use logger on backend)
+            - No commented-out code
+            - No TODO without linked issue number
+            - No hardcoded magic numbers or strings
+            - New endpoints must have Swagger decorators
+            - New pages must have loading.tsx and error.tsx
+            - Functions >50 lines should be split
+            - Components >200 lines should be split
+
+            ### 📏 Conventions
+            - Files: kebab-case
+            - Components: PascalCase
+            - Functions/vars: camelCase
+            - Constants: UPPER_SNAKE_CASE
+            - Commits: Conventional Commits format
+            - API endpoints: kebab-case
+            - Boolean vars: is/has/can/should prefix
+
+            ## Output Format
+            For each issue found, provide:
+            1. **Severity**: 🔴 Critical | 🟡 Warning | 🔵 Suggestion
+            2. **File and line reference**
+            3. **What's wrong**
+            4. **How to fix** (with code example if helpful)
+
+            End with a summary: total issues by severity, overall assessment (✅ Approve / ⚠️ Changes Requested / 🔴 Block).
+
+          claude_args: |
+            --max-turns 5
+            --model claude-sonnet-4-5-20250929
