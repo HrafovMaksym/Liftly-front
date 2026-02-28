@@ -35,77 +35,48 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           use_sticky_comment: true
           include_fix_links: true
+          show_full_output: true
 
           prompt: |
-            Review this PR thoroughly. Follow ALL rules from CLAUDE.md.
+            Review the PR diff thoroughly. Follow ALL rules from CLAUDE.md.
+
+            Focus ONLY on the changed files in this PR diff. Do NOT try to list PRs or run git commands.
+            Use Read, Glob, and Grep tools to inspect source files if needed.
 
             ## Review Checklist
 
-            ### 🔒 Security
-            - Check for exposed secrets, API keys, tokens in code
-            - Verify all user input is validated (Zod schemas)
-            - Check auth guards on new endpoints (@UseGuards, @Public)
-            - Look for SQL injection risks (raw queries with user input)
-            - Check for XSS vectors (dangerouslySetInnerHTML, unescaped output)
+            ### Security
+            - Check for exposed secrets, API keys, tokens, passwords in code
+            - Verify all user input is validated
+            - Check for XSS vectors
 
-            ### 🏗️ Architecture (FSD)
-            - Verify layer import rules: app→pages→widgets→features→entities→shared
-            - Entities must NOT have mutations (only GET queries)
-            - Features must NOT render complex UI (only action hooks + small buttons)
-            - Widgets must NOT import from other widgets
-            - Shared must NOT contain business logic
-            - Check barrel exports (index.ts) on every slice
-
-            ### 📝 TypeScript
-            - Flag any use of `any` type — suggest `unknown` with type guard
+            ### TypeScript
+            - Flag any use of `any` type
             - Check for missing return types on functions
-            - Verify exhaustive switch statements (no missing cases)
-            - Check proper nullability handling (no `!` assertions without justification)
 
-            ### ⚡ Performance
-            - Check for N+1 queries in Prisma (missing include/select)
-            - Verify pagination on list endpoints (no unbounded arrays)
-            - Look for missing `select` in Prisma queries (returning full objects)
-            - Check for heavy components that should be lazy loaded
-
-            ### 🧪 Quality
-            - No console.log (use logger on backend)
+            ### Quality
+            - No console.log left in code
             - No commented-out code
             - No TODO without linked issue number
-            - No hardcoded magic numbers or strings
-            - New endpoints must have Swagger decorators
-            - New pages must have loading.tsx and error.tsx
-            - Functions >50 lines should be split
-            - Components >200 lines should be split
-
-            ### 📏 Conventions
-            - Files: kebab-case
-            - Components: PascalCase
-            - Functions/vars: camelCase
-            - Constants: UPPER_SNAKE_CASE
-            - Commits: Conventional Commits format
-            - API endpoints: kebab-case
-            - Boolean vars: is/has/can/should prefix
+            - No hardcoded magic numbers, URLs, or credentials
 
             ## Output Format
             For each issue found, provide:
-            1. **Severity**: 🔴 Critical | 🟡 Warning | 🔵 Suggestion
-            2. **File and line reference**
-            3. **What's wrong**
-            4. **How to fix** (with code example if helpful)
+            1. Severity: CRITICAL | WARNING | SUGGESTION
+            2. File and line
+            3. What's wrong
+            4. How to fix
 
-            End with a summary: total issues by severity, overall assessment.
+            End with a summary line, exactly one of:
+            REVIEW_VERDICT: APPROVE
+            REVIEW_VERDICT: BLOCK
 
-            IMPORTANT: At the very end of your review, on its own line, output exactly one of:
-            - REVIEW_VERDICT: APPROVE
-            - REVIEW_VERDICT: BLOCK
-
-            Output BLOCK if there are any 🔴 Critical issues. Output APPROVE otherwise.
+            Output BLOCK if there are any CRITICAL issues. Output APPROVE otherwise.
 
           claude_args: |
             --max-turns 10
             --model claude-sonnet-4-5-20250929
-          allowed_tools: "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(gh pr view:*),Bash(gh pr list:*)"
+            --allowedTools Read Glob Grep
 
       - name: Check review verdict
         if: always() && steps.review.outcome == 'success'
