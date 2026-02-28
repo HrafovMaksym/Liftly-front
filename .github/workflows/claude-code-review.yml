@@ -87,10 +87,15 @@ jobs:
             exit 0
           fi
 
-          # Write review text directly to file — avoids shell quoting issues
-          jq -r '.result // empty' "$EXEC_FILE" > /tmp/review-body.md 2>/dev/null
+          # File is NDJSON (one JSON object per line) — must use -s to slurp into array
+          # || true prevents bash -e from killing the script on jq failure
+
+          # Try: last entry that has a .result field
+          jq -s -r 'map(select(.result)) | last | .result // empty' "$EXEC_FILE" > /tmp/review-body.md 2>/dev/null || true
+
+          # Fallback: text content from the last assistant message
           if [ ! -s /tmp/review-body.md ]; then
-            jq -r 'last(.[] | select(.type == "result") | .result) // empty' "$EXEC_FILE" > /tmp/review-body.md 2>/dev/null
+            jq -s -r '[.[] | select(.type == "assistant")] | last | [.message.content[] | select(.type == "text") | .text] | join("\n")' "$EXEC_FILE" > /tmp/review-body.md 2>/dev/null || true
           fi
 
           if [ -s /tmp/review-body.md ]; then
