@@ -78,14 +78,34 @@ jobs:
             --model claude-sonnet-4-5-20250929
             --allowedTools Read Glob Grep
 
+      - name: Post review comment
+        if: always() && steps.review.outcome == 'success'
+        run: |
+          EXEC_FILE="/home/runner/work/_temp/claude-execution-output.json"
+          if [ ! -f "$EXEC_FILE" ]; then
+            echo "::warning::No execution output file found"
+            exit 0
+          fi
+
+          # Write review text directly to file — avoids shell quoting issues
+          jq -r '.result // empty' "$EXEC_FILE" > /tmp/review-body.md 2>/dev/null
+          if [ ! -s /tmp/review-body.md ]; then
+            jq -r 'last(.[] | select(.type == "result") | .result) // empty' "$EXEC_FILE" > /tmp/review-body.md 2>/dev/null
+          fi
+
+          if [ -s /tmp/review-body.md ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/review-body.md
+          else
+            echo "::warning::Could not extract review text from execution output"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Check review verdict
         if: always() && steps.review.outcome == 'success'
         run: |
-          COMMENT=$(gh pr view ${{ github.event.pull_request.number }} --json comments --jq '.comments[-1].body')
-          if echo "$COMMENT" | grep -q "REVIEW_VERDICT: BLOCK"; then
+          if grep -q "REVIEW_VERDICT: BLOCK" /home/runner/work/_temp/claude-execution-output.json; then
             echo "🔴 Claude found critical issues — blocking merge"
             exit 1
           fi
           echo "✅ No critical issues found"
-        env:
-          GH_TOKEN: ${{ github.token }}
